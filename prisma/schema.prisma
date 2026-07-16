@@ -11,3 +11,321 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum Rubro {
+  SALUD
+  ECOMMERCE
+  SERVICIOS
+  EDUCACION
+  OTRO
+}
+
+enum Plan {
+  BASICO
+  PRO
+  EMPRESARIAL
+}
+
+enum RolUsuario {
+  ADMIN
+  MIEMBRO
+}
+
+enum BaseLicitud {
+  CONSENTIMIENTO
+  EJECUCION_CONTRATO
+  OBLIGACION_LEGAL
+  INTERES_LEGITIMO
+}
+
+enum CategoriaTitular {
+  CLIENTES
+  PACIENTES
+  TRABAJADORES
+  PROVEEDORES
+}
+
+enum OrigenActividad {
+  WIZARD
+  MANUAL
+}
+
+enum EstadoDpa {
+  FALTANTE
+  GENERADO
+  ENVIADO
+  FIRMADO
+}
+
+enum MedioConsentimiento {
+  CASILLA_WEB
+  DOCUMENTO_FIRMADO
+  VERBAL_REGISTRADO
+}
+
+enum TipoSolicitud {
+  ACCESO
+  RECTIFICACION
+  SUPRESION
+  OPOSICION
+  PORTABILIDAD
+}
+
+enum EstadoSolicitud {
+  NUEVA
+  EN_PROCESO
+  RESPONDIDA
+  RECHAZADA
+}
+
+enum TipoDocumento {
+  RAT
+  DPA
+  POLITICA_PRIVACIDAD
+  NOTIFICACION_BRECHA
+  REPORTE_ACCESO
+  TEXTO_CONSENTIMIENTO
+}
+
+enum EstadoItem {
+  OK
+  FALTA
+  POR_VENCER
+}
+
+model Empresa {
+  id             String   @id @default(uuid())
+  rut            String   @unique
+  razonSocial    String
+  nombreFantasia String?
+  rubro          Rubro
+  sitioWeb       String?
+  plan           Plan     @default(BASICO)
+  creadaEn       DateTime @default(now())
+
+  usuarios        Usuario[]
+  perfil          PerfilNegocio?
+  actividades     ActividadTratamiento[]
+  proveedores     Proveedor[]
+  consentimientos Consentimiento[]
+  solicitudes     SolicitudTitular[]
+  incidentes      Incidente[]
+  documentos      DocumentoGenerado[]
+  cumplimiento    ItemCumplimiento[]
+
+  @@map("empresas")
+}
+
+model Usuario {
+  id             String     @id @default(uuid())
+  empresaId      String
+  email          String     @unique
+  authProviderId String     @unique // el "sub" del JWT de Supabase
+  nombre         String
+  rol            RolUsuario @default(MIEMBRO)
+  creadoEn       DateTime   @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId])
+  @@map("usuarios")
+}
+
+// wizard
+model PerfilNegocio {
+  id           String    @id @default(uuid())
+  empresaId    String    @unique
+  respuestas   Json // respuestas crudas del wizard, ej: { "p11": "casilla_web" }
+  version      Int       @default(1)
+  completadoEn DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@map("perfiles_negocio")
+}
+
+// entidad central fila del RAP
+model ActividadTratamiento {
+  id                         String             @id @default(uuid())
+  empresaId                  String
+  nombre                     String
+  finalidad                  String
+  baseLicitud                BaseLicitud
+  categoriasTitular          CategoriaTitular[]
+  plazoConservacion          String
+  transferenciaInternacional Boolean            @default(false)
+  paisesDestino              String[]           @default([])
+  medidasSeguridad           Json // checklist declarado
+  origen                     OrigenActividad    @default(WIZARD)
+  creadaEn                   DateTime           @default(now())
+  actualizadaEn              DateTime           @updatedAt
+
+  empresa         Empresa              @relation(fields: [empresaId], references: [id])
+  datos           ActividadDato[]
+  proveedores     ActividadProveedor[]
+  consentimientos Consentimiento[]
+
+  @@index([empresaId])
+  @@map("actividades_tratamiento")
+}
+
+model CategoriaDato {
+  id       String  @id @default(uuid())
+  nombre   String  @unique
+  sensible Boolean @default(false)
+
+  actividades ActividadDato[]
+
+  @@map("categorias_dato")
+}
+
+model ActividadDato {
+  actividadId     String
+  categoriaDatoId String
+
+  actividad ActividadTratamiento @relation(fields: [actividadId], references: [id], onDelete: Cascade)
+  categoria CategoriaDato        @relation(fields: [categoriaDatoId], references: [id])
+
+  @@id([actividadId, categoriaDatoId])
+  @@map("actividades_datos")
+}
+
+model Proveedor {
+  id           String  @id @default(uuid())
+  empresaId    String
+  nombre       String
+  tipoServicio String
+  paisDatos    String?
+
+  empresa     Empresa              @relation(fields: [empresaId], references: [id])
+  dpa         Dpa?
+  actividades ActividadProveedor[]
+
+  @@index([empresaId])
+  @@map("proveedores")
+}
+
+model ActividadProveedor {
+  actividadId String
+  proveedorId String
+
+  actividad ActividadTratamiento @relation(fields: [actividadId], references: [id], onDelete: Cascade)
+  proveedor Proveedor            @relation(fields: [proveedorId], references: [id])
+
+  @@id([actividadId, proveedorId])
+  @@map("actividades_proveedores")
+}
+
+model Dpa {
+  id          String    @id @default(uuid())
+  proveedorId String    @unique
+  estado      EstadoDpa @default(FALTANTE)
+  documentoId String?
+  firmadoEn   DateTime?
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id])
+
+  @@map("dpas")
+}
+
+model Consentimiento {
+  id                   String              @id @default(uuid())
+  empresaId            String
+  actividadId          String
+  identificadorTitular String // email o RUT (revisar hasheo — pregunta 5 del modelo)
+  medio                MedioConsentimiento
+  otorgadoEn           DateTime
+  revocadoEn           DateTime?
+  evidencia            String?
+
+  empresa   Empresa              @relation(fields: [empresaId], references: [id])
+  actividad ActividadTratamiento @relation(fields: [actividadId], references: [id])
+
+  @@index([empresaId])
+  @@index([identificadorTitular])
+  @@map("consentimientos")
+}
+
+// buzon de solicittudes (ARCOP)
+
+model SolicitudTitular {
+  id                   String          @id @default(uuid())
+  empresaId            String
+  tipo                 TipoSolicitud
+  nombreTitular        String
+  emailTitular         String
+  detalle              String
+  estado               EstadoSolicitud @default(NUEVA)
+  recibidaEn           DateTime        @default(now())
+  venceEn              DateTime // recibidaEn + plazo legal (tabla plazos_legales)
+  respondidaEn         DateTime?
+  respuesta            String?
+  documentoRespuestaId String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, estado])
+  @@map("solicitudes_titular")
+}
+
+// plazos legales configurables
+model PlazoLegal {
+  id           String        @id @default(uuid())
+  tipo         TipoSolicitud @unique
+  dias         Int
+  habiles      Boolean       @default(true)
+  vigenteDesde DateTime      @default(now())
+
+  @@map("plazos_legales")
+}
+
+// incidentes (brechas)
+model Incidente {
+  id                         String    @id @default(uuid())
+  empresaId                  String
+  descripcion                String
+  datosAfectados             String[]
+  titularesAfectadosEstimado Int?
+  ocurridoEn                 DateTime
+  detectadoEn                DateTime
+  requiereNotificacion       Boolean?
+  notificadoAgenciaEn        DateTime?
+  notificadoTitularesEn      DateTime?
+  medidasTomadas             String?
+  documentoNotificacionId    String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId])
+  @@map("incidentes")
+}
+
+//documentos y semaforo
+model DocumentoGenerado {
+  id               String        @id @default(uuid())
+  empresaId        String
+  tipo             TipoDocumento
+  version          Int
+  plantillaVersion String // clave del negocio recurrente: detecta documentos desactualizados
+  urlArchivo       String
+  generadoEn       DateTime      @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, tipo])
+  @@map("documentos_generados")
+}
+
+model ItemCumplimiento {
+  id         String     @id @default(uuid())
+  empresaId  String
+  clave      String // "rat_generado", "dpas_completos", "politica_publicada", "solicitudes_al_dia"
+  estado     EstadoItem
+  detalle    String?
+  evaluadoEn DateTime
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, clave])
+  @@map("items_cumplimiento")
+}
