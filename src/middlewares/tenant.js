@@ -25,4 +25,4 @@ async function requireTenant(req, res, next) {
     }
 }
 
-module.exports = requireTenant;
+module.exports = { requireTenant };
