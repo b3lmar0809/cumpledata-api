@@ -9,7 +9,7 @@
 
 const jwt = require("jsonwebtoken");
 const jwksClient = require("jwks-rsa");
-const env = require("../config/env");
+const { env } = require("../config/env");
 
 const client = jwksClient({
     jwksUri: `${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
@@ -38,4 +38,4 @@ function requireAuth(req, res, next) {
     });
 }
 
-module.exports = requireAuth;
+module.exports = { requireAuth };
