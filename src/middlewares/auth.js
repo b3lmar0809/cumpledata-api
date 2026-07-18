@@ -7,23 +7,16 @@
  *
  **/
 
-const jwt = require("jsonwebtoken");
-const jwksClient = require("jwks-rsa");
-const env = require("../config/env");
+const { createRemoteJWKSet, jwtVerify } = require("jose");
+const { env } = require("../config/env");
 
-const client = jwksClient({
-    jwksUri: `${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
-    cache: true,
-})
+//el set de llaves publica de Supabase, jose lo descarga,
+// lo cachea y lo refresca solo cuando rotan las llaves.
+const JWKS = createRemoteJWKSet(
+    new URL(`${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
+);
 
-function getKey(header, callback) {
-    client.getSigningKey(header.kid, (err, key) => {
-        if (err) return callback(err);
-        callback(null, key.getPublicKey());
-    });
-}
-
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
     const header = req.headers.authorization;
     if (!header || !header.startsWith("Bearer ")) {
         return res.status(401).json({ error: "No autenticado" });
@@ -31,11 +24,14 @@ function requireAuth(req, res, next) {
 
     const token = header.slice(7);
 
-    jwt.verify(token, getKey, { algorithms: ["ES256", "RS256"] }, (err, payload) => {
-        if (err) return res.status(401).json({ error: "Token inválido o expirado" });
+    try {
+        const { payload } = await jwtVerify(token, JWKS);
         req.auth = { authProviderId: payload.sub, email: payload.email };
         next();
-    });
+    } catch (err) {
+        console.error("JWT verify falló:", err.message); // temporal, lo sacamos cuando todo ande
+        return res.status(401).json({ error: "Token inválido o expirado" });
+    }
 }
 
-module.exports = requireAuth;
+module.exports = { requireAuth };
