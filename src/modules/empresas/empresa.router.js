@@ -8,9 +8,9 @@
  **/
 
 const Router = require("express")
-const requireAuth = require("../../middlewares/auth");
-const requireTenant = require("../../middlewares/tenant");
-const controller = require("./empresa.controller")
+const { requireAuth } = require("../../middlewares/auth");
+const { requireTenant } = require("../../middlewares/tenant");
+const controller = require("./empresa.controller");
 const router = Router();
 
 router.post("/", requireAuth, controller.crear);
