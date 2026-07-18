@@ -7,22 +7,23 @@
  *
  **/
 
-const prisma = require("../config/prisma")
+const { prisma } = require("../config/prisma")
 
 async function requireTenant(req, res, next) {
     try {
         const usuario = await prisma.usuario.findUnique({
-            where: {authProviderId: req.user.authProviderId}
+            where: {authProviderId: req.auth.authProviderId}
         });
 
         if (!usuario) {
             return res.status(401).json({error: "usuario sin empresa registrada", codigo: "SIN_EMPRESA"});
         }
         req.usuario = { id: usuario.id, nombre: usuario.nombre, role: usuario.role };
+        req.empresaId = usuario.empresaId;
         next();
     } catch (err) {
         next(err);
     }
 }
 
-module.exports = requireTenant;
+module.exports = { requireTenant };
