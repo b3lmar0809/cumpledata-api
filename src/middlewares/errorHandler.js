@@ -8,7 +8,7 @@
  **/
 //cualquier error que ocurra en el controller o service via next(err)
 // termina aqui
-const ZodError = require("zod");
+const { ZodError } = require("zod");
 const AppError = require("../utils/AppError");
 
 function errorHandler(err, req, res, next) {
